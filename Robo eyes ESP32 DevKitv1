@@ -1,0 +1,128 @@
+#include <Wire.h>
+#include <Adafruit_SSD1306.h>
+#include <FluxGarage_RoboEyes.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+RoboEyes<Adafruit_SSD1306> roboEyes(display);
+
+// Ultrasonic pins
+#define TRIG 9
+#define ECHO 10
+
+long duration;
+int distance = 100;
+int filtered = 100;
+int lastDistance = 100;
+
+// timing
+unsigned long lastUpdate = 0;
+
+// --------------------
+// Ultrasonic function
+// --------------------
+int getDistance() {
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+
+  duration = pulseIn(ECHO, HIGH, 20000);
+  int cm = duration * 0.034 / 2;
+
+  if (cm <= 0 || cm > 200) cm = 200;
+  return cm;
+}
+
+// --------------------
+// smoothing filter
+// --------------------
+int smooth(int val) {
+  filtered = (filtered * 6 + val) / 7;
+  return filtered;
+}
+
+// --------------------
+// setup
+// --------------------
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    while (1);
+  }
+
+  roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 60);
+
+  roboEyes.setAutoblinker(ON, 4, 3);
+  roboEyes.setIdleMode(ON, 3, 3);
+
+  roboEyes.setMood(HAPPY);
+}
+
+// --------------------
+// loop
+// --------------------
+void loop() {
+
+  if (millis() - lastUpdate > 120) {
+
+    int raw = getDistance();
+    distance = smooth(raw);
+
+    int diff = distance - lastDistance;
+
+    int mood;
+
+    // =========================
+    // VERY FAR = SAD
+    // =========================
+    if (distance > 80) {
+      mood = 2; // TIRED / SAD
+    }
+
+    // =========================
+    // DEAD ZONE (no noise reaction)
+    // =========================
+    else if (abs(diff) <= 2) {
+      mood = 0; // HAPPY idle
+    }
+
+    // =========================
+    // MOVING AWAY = ANGRY
+    // =========================
+    else if (diff > 3) {
+      mood = 1; // ANGRY
+    }
+
+    // =========================
+    // MOVING CLOSER = HAPPY
+    // =========================
+    else if (diff < -3) {
+      mood = 0; // HAPPY
+    }
+
+    else {
+      mood = 0;
+    }
+
+    // =========================
+    // APPLY EMOTION
+    // =========================
+    if (mood == 0) roboEyes.setMood(HAPPY);
+    else if (mood == 1) roboEyes.setMood(ANGRY);
+    else if (mood == 2) roboEyes.setMood(TIRED);
+
+    lastDistance = distance;
+    lastUpdate = millis();
+  }
+
+  roboEyes.update();
+}
