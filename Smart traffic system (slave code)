@@ -1,0 +1,251 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <SoftwareSerial.h>
+
+SoftwareSerial masterSerial(A0, A1);   // RX, TX
+
+LiquidCrystal_I2C lcd1(0x27, 16, 2);
+LiquidCrystal_I2C lcd2(0x26, 16, 2);
+LiquidCrystal_I2C lcd3(0x25, 16, 2);
+LiquidCrystal_I2C lcd4(0x24, 16, 2);
+
+// Array of LCD pointers for easy looping
+LiquidCrystal_I2C* lcds[4] = { &lcd1, &lcd2, &lcd3, &lcd4 };
+
+// Pin Definitions grouped into arrays for Lanes 1-4
+const byte greenPins[4]  = {2, 5, 8, 11};
+const byte yellowPins[4] = {3, 6, 9, 12};
+const byte redPins[4]    = {4, 7, 10, 13};
+
+const int NORMAL_GREEN = 15;
+const int EXTENDED_GREEN = 20;
+const int YELLOW_TIME = 5;
+
+int queueLane[4] = {0, 0, 0, 0};
+int greenTime[4] = {15, 15, 15, 15};
+int redTime[4]   = {0, 0, 0, 0};
+
+enum TrafficState { GREEN, YELLOW };
+TrafficState state = GREEN;
+
+byte currentLane = 0;
+int timer = NORMAL_GREEN;
+
+unsigned long previousMillis = 0;
+const unsigned long oneSecond = 1000;
+
+String incomingData = "";
+bool newPacket = false;
+bool packetReceived = false;
+bool cycleFinished = false;
+
+void setup() {
+    masterSerial.begin(9600);
+
+    // Initialize all LCDs and Pins efficiently using a loop
+    for (int i = 0; i < 4; i++) {
+        lcds[i]->init();
+        lcds[i]->backlight();
+        
+        lcds[i]->setCursor(0, 0);
+        lcds[i]->print(F("Lane "));
+        lcds[i]->print(i + 1);
+        lcds[i]->print(F("          "));
+        
+        lcds[i]->setCursor(0, 1);
+        lcds[i]->print(F("Waiting Master"));
+
+        pinMode(greenPins[i], OUTPUT);
+        pinMode(yellowPins[i], OUTPUT);
+        pinMode(redPins[i], OUTPUT);
+
+        digitalWrite(greenPins[i], LOW);
+        digitalWrite(yellowPins[i], LOW);
+        digitalWrite(redPins[i], HIGH);
+    }
+}
+
+void calculateGreenTime() {
+    for (int i = 0; i < 4; i++) {
+        greenTime[i] = (queueLane[i] > 6) ? EXTENDED_GREEN : NORMAL_GREEN;
+    }
+}
+
+void calculateRedTime() {
+    for (int i = 0; i < 4; i++) redTime[i] = 0;
+
+    // Use modulo arithmetic to dynamically wrap around the lanes and calculate wait times
+    int cumulativeTime = timer + YELLOW_TIME;
+    for (int i = 1; i < 4; i++) {
+        int targetLane = (currentLane + i) % 4; // Wraps 0,1,2,3 seamlessly
+        redTime[targetLane] = cumulativeTime;
+        cumulativeTime += greenTime[targetLane] + YELLOW_TIME;
+    }
+}
+
+void parsePacket(String data) {
+    data.trim();
+    if (data.startsWith("<") && data.endsWith(">")) {
+        data.remove(0, 1);
+        data.remove(data.length() - 1);
+
+        int p1 = data.indexOf(',');
+        int p2 = data.indexOf(',', p1 + 1);
+        int p3 = data.indexOf(',', p2 + 1);
+
+        queueLane[0] = data.substring(0, p1).toInt();
+        queueLane[1] = data.substring(p1 + 1, p2).toInt();
+        queueLane[2] = data.substring(p2 + 1, p3).toInt();
+        queueLane[3] = data.substring(p3 + 1).toInt();
+
+        calculateGreenTime();
+        timer = greenTime[currentLane];
+        calculateRedTime();
+        newPacket = true;
+    }
+}
+
+void setTrafficLights() {
+    // Reset all lights to Default (Red ON, others OFF)
+    for (int i = 0; i < 4; i++) {
+        digitalWrite(greenPins[i], LOW);
+        digitalWrite(yellowPins[i], LOW);
+        digitalWrite(redPins[i], HIGH); 
+    }
+
+    // Set the active lane
+    digitalWrite(redPins[currentLane], LOW);
+    if (state == GREEN) {
+        digitalWrite(greenPins[currentLane], HIGH);
+    } else {
+        digitalWrite(yellowPins[currentLane], HIGH);
+    }
+}
+
+void updateLCDs() {
+    for (int i = 0; i < 4; i++) {
+        lcds[i]->setCursor(0, 0);
+        lcds[i]->print(F("Lane "));
+        lcds[i]->print(i + 1);
+        lcds[i]->print(F("        "));
+        
+        lcds[i]->setCursor(0, 1);
+
+        if (i == currentLane) {
+            if (state == GREEN) {
+                lcds[i]->print(F("GO "));
+                if (timer < 10) lcds[i]->print(" ");
+                lcds[i]->print(timer);
+                lcds[i]->print(F("   "));
+            } else {
+                lcds[i]->print(F("READY "));
+                if (timer < 10) lcds[i]->print(" ");
+                lcds[i]->print(timer);
+                lcds[i]->print(F(" "));
+            }
+        } else {
+            lcds[i]->print(F("STOP "));
+            if (redTime[i] < 10) lcds[i]->print(" ");
+            lcds[i]->print(redTime[i]);
+            lcds[i]->print(F("   "));
+        }
+    }
+}
+
+void nextLane() {
+    currentLane++;
+    if (currentLane > 3) {
+        currentLane = 0;
+        cycleFinished = true;
+    }
+
+    timer = greenTime[currentLane];
+    state = GREEN;
+
+    calculateRedTime();
+    setTrafficLights();
+    updateLCDs();
+}
+
+void updateTrafficTimer() {
+    if (millis() - previousMillis >= oneSecond) {
+        previousMillis = millis();
+
+        if (timer > 0) {
+            timer--;
+            // Update red countdowns
+            for (int i = 0; i < 4; i++) {
+                if (i != currentLane && redTime[i] > 0) redTime[i]--;
+            }
+            updateLCDs();
+        } else {
+            if (state == GREEN) {
+                state = YELLOW;
+                timer = YELLOW_TIME;
+                setTrafficLights();
+                updateLCDs();
+            } else {
+                nextLane();
+            }
+        }
+    }
+}
+
+void receivePacket() {
+    while (masterSerial.available()) {
+        char c = masterSerial.read();
+        if (c == '<') {
+            incomingData = "";
+        } else if (c == '>') {
+            parsePacket("<" + incomingData + ">");
+        } else {
+            incomingData += c;
+        }
+    }
+}
+
+void initializeTraffic() {
+    calculateGreenTime();
+    currentLane = 0;
+    state = GREEN;
+    timer = greenTime[0];
+    calculateRedTime();
+    setTrafficLights();
+    updateLCDs();
+}
+
+void loop() {
+    // 1. Always listen for incoming queue packet
+    receivePacket();
+
+    // 2. First startup - Wait until Master sends the first queue values
+    if (!packetReceived) {
+        if (newPacket) {
+            packetReceived = true;
+            initializeTraffic();
+            newPacket = false;
+        }
+        return;
+    }
+
+    // 3. Run normal traffic logic
+    updateTrafficTimer();
+
+    // 4. At the end of one complete rotation, wait for next queue
+    if (cycleFinished) {
+        cycleFinished = false;
+
+        for (int i = 0; i < 4; i++) {
+            lcds[i]->setCursor(0, 1); 
+            lcds[i]->print(F("Waiting Data  "));
+        }
+
+        // Wait here until a new queue packet arrives
+        while (!newPacket) {
+            receivePacket();
+        }
+
+        initializeTraffic();
+        newPacket = false;
+    }
+}
