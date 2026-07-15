@@ -1,0 +1,139 @@
+// Pin assignments
+int NS_Green = 2, NS_Yellow = 3, NS_Red = 4, NS_Right = 8; // North-South
+int EW_Green = 5, EW_Yellow = 6, EW_Red = 7, EW_Right = 9; // East-West
+
+int NS_Walk = 10, NS_DontWalk = 11; // Pedestrian lights for North-South
+int EW_Walk = 12, EW_DontWalk = 13; // Pedestrian lights for East-West
+
+int NS_Button = A0; // Pedestrian button for North-South
+int EW_Button = A1; // Pedestrian button for East-West
+
+// Timing settings (in milliseconds)
+int NS_greenTime = 6000;  // Green light duration for North-South
+int NS_yellowTime = 2000; // Yellow light duration for North-South
+int NS_walkTime = 5000;   // Walk signal duration for North-South pedestrians
+
+int EW_greenTime = 8000;  // Green light duration for East-West
+int EW_yellowTime = 2000; // Yellow light duration for East-West
+int EW_walkTime = 5000;   // Walk signal duration for East-West pedestrians
+
+int allRedTime = 1000;    // All-red safety pause
+int pedestrianTimer = 3000; // Pedestrian walk time set to 3 seconds
+
+// Button states
+bool NS_PedestrianRequest = false;
+bool EW_PedestrianRequest = false;
+
+void setup() {
+  // Traffic lights setup
+  pinMode(NS_Green, OUTPUT);
+  pinMode(NS_Yellow, OUTPUT);
+  pinMode(NS_Red, OUTPUT);
+  pinMode(NS_Right, OUTPUT);
+
+  pinMode(EW_Green, OUTPUT);
+  pinMode(EW_Yellow, OUTPUT);
+  pinMode(EW_Red, OUTPUT);
+  pinMode(EW_Right, OUTPUT);
+
+  // Pedestrian lights setup
+  pinMode(NS_Walk, OUTPUT);
+  pinMode(NS_DontWalk, OUTPUT);
+  pinMode(EW_Walk, OUTPUT);
+  pinMode(EW_DontWalk, OUTPUT);
+
+  // Button inputs
+  pinMode(NS_Button, INPUT_PULLUP);
+  pinMode(EW_Button, INPUT_PULLUP);
+
+  // Initialize pedestrian lights to Don't Walk
+  digitalWrite(NS_Walk, LOW);
+  digitalWrite(NS_DontWalk, HIGH);
+  digitalWrite(EW_Walk, LOW);
+  digitalWrite(EW_DontWalk, HIGH);
+}
+
+void loop() {
+  // Check pedestrian buttons
+  if (digitalRead(NS_Button) == LOW) {
+    NS_PedestrianRequest = true;
+  }
+  if (digitalRead(EW_Button) == LOW) {
+    EW_PedestrianRequest = true;
+  }
+
+  // Phase 1: North-South Green, East-West Red
+  transitionToGreen(NS_Red, NS_Yellow, NS_Green, EW_Red, NS_Right, NS_PedestrianRequest, NS_Walk, NS_DontWalk, NS_walkTime);
+  delay(NS_greenTime);
+
+  // Phase 2: North-South Yellow
+  yellowPhase(NS_Green, NS_Yellow, NS_Red, NS_Right, NS_DontWalk);
+  delay(NS_yellowTime);
+
+  // Phase 3: All Red (Safety Pause)
+  allRedPhase();
+  delay(allRedTime);
+
+  // Phase 4: East-West Green, North-South Red
+  transitionToGreen(EW_Red, EW_Yellow, EW_Green, NS_Red, EW_Right, EW_PedestrianRequest, EW_Walk, EW_DontWalk, EW_walkTime);
+  delay(EW_greenTime);
+
+  // Phase 5: East-West Yellow
+  yellowPhase(EW_Green, EW_Yellow, EW_Red, EW_Right, EW_DontWalk);
+  delay(EW_yellowTime);
+
+  // Phase 6: All Red (Safety Pause)
+  allRedPhase();
+  delay(allRedTime);
+}
+
+void transitionToGreen(int redPin, int yellowPin, int greenPin, int opposingRedPin, int turnPin, bool &pedRequest, int walkPin, int dontWalkPin, int walkTime) {
+  // Prepare for green: Turn red off, then yellow on
+  digitalWrite(redPin, LOW);       // Current direction red off
+  digitalWrite(yellowPin, HIGH);  // Current direction yellow on
+  digitalWrite(opposingRedPin, HIGH); // Opposing direction remains red
+  delay(allRedTime); // Brief pause for yellow before green
+
+  // Turn yellow off, green on
+  digitalWrite(yellowPin, LOW);
+  digitalWrite(greenPin, HIGH);
+  digitalWrite(turnPin, HIGH); // Right turn signal on
+
+  // Handle pedestrian request
+  if (pedRequest) {
+    digitalWrite(greenPin, LOW);  // Turn off traffic green
+    digitalWrite(walkPin, HIGH); // Turn on pedestrian walk
+    digitalWrite(dontWalkPin, LOW);
+    
+    // Pedestrian timer for 3 seconds
+    delay(pedestrianTimer);            // Wait for pedestrians to cross
+    digitalWrite(walkPin, LOW);        // Turn off walk
+    digitalWrite(dontWalkPin, HIGH);   // Turn on don't walk
+
+    pedRequest = false;                // Reset pedestrian request
+    digitalWrite(greenPin, HIGH);      // Resume traffic green
+  }
+}
+
+void yellowPhase(int greenPin, int yellowPin, int redPin, int turnPin, int dontWalkPin) {
+  // Turn green off, yellow on
+  digitalWrite(greenPin, LOW);
+  digitalWrite(yellowPin, HIGH);
+  digitalWrite(turnPin, LOW);  // Turn signal off
+  digitalWrite(dontWalkPin, HIGH); // Ensure pedestrian don't walk remains on
+}
+
+void allRedPhase() {
+  // All directions red for safety pause
+  digitalWrite(NS_Red, HIGH);
+  digitalWrite(EW_Red, HIGH);
+
+  digitalWrite(NS_Yellow, LOW);
+  digitalWrite(EW_Yellow, LOW);
+
+  digitalWrite(NS_Green, LOW);
+  digitalWrite(EW_Green, LOW);
+
+  digitalWrite(NS_Right, LOW);
+  digitalWrite(EW_Right, LOW);
+}
