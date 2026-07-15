@@ -1,0 +1,38 @@
+#include <AccelStepper.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// STEP = 3, DIR = 4
+AccelStepper stepper(1, 3, 4);
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+
+  stepper.setMaxSpeed(1000);
+  stepper.setAcceleration(500);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Stepper Ready");
+}
+
+void loop() {
+
+  lcd.setCursor(0, 1);
+  lcd.print("Moving FWD   ");
+
+  stepper.moveTo(200);   // 1 rotation approx (depends motor)
+  stepper.runToPosition();
+
+  delay(1000);
+
+  lcd.setCursor(0, 1);
+  lcd.print("Moving BACK  ");
+
+  stepper.moveTo(0);
+  stepper.runToPosition();
+
+  delay(1000);
+} 
