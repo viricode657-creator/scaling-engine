@@ -1,0 +1,91 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// Change to 0x27 if your LCD is not displaying
+LiquidCrystal_I2C lcd(0x02, 16, 2);
+
+// Pin Definitions
+const int trigPin = 9;
+const int echoPin = 10;
+const int irPin = 8;
+
+const int buzzerPin = 4;
+const int redLED = 5;
+const int greenLED = 6;
+
+long duration;
+float distance;
+
+void setup() {
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  pinMode(irPin, INPUT);
+
+  pinMode(redLED, OUTPUT);
+  pinMode(greenLED, OUTPUT);
+
+  pinMode(buzzerPin, OUTPUT);
+
+  Serial.begin(9600);
+
+  lcd.init();
+  lcd.backlight();
+
+  lcd.setCursor(0,0);
+  lcd.print("Alarm System");
+  delay(1500);
+  lcd.clear();
+}
+
+void loop() {
+
+  // -------- Ultrasonic --------
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(trigPin, LOW);
+
+  duration = pulseIn(echoPin, HIGH, 30000);
+
+  if (duration == 0)
+    distance = 999;
+  else
+    distance = duration * 0.0343 / 2;
+
+  // Detect if object is within 20 cm
+  bool ultrasonicDetected = (distance > 0 && distance <= 20);
+
+  // Most IR obstacle sensors are LOW when detecting
+  bool irDetected = (digitalRead(irPin) == LOW);
+
+  // -------- Alarm --------
+  if (ultrasonicDetected || irDetected) {
+    digitalWrite(redLED, HIGH);
+    digitalWrite(greenLED, LOW);
+    tone(buzzerPin, 1000);
+  } else {
+    digitalWrite(redLED, LOW);
+    digitalWrite(greenLED, HIGH);
+    noTone(buzzerPin);
+  }
+
+  // -------- LCD --------
+  lcd.setCursor(0,0);
+  lcd.print("Distance:      ");
+
+  lcd.setCursor(0,1);
+  lcd.print(distance,1);
+  lcd.print(" cm      ");
+
+  // -------- Serial Monitor --------
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.print(" cm | IR: ");
+  Serial.println(irDetected ? "Detected" : "Clear");
+
+  delay(200);
+}
