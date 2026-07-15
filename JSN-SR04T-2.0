@@ -1,0 +1,101 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+const int trigPin = 12;
+const int echoPin = 11;
+
+long duration;
+float distance;
+
+// for stability check
+float lastDistance = 0;
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  digitalWrite(trigPin, LOW);
+
+  // OLED init
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED not found");
+    while (true);
+  }
+
+  display.clearDisplay();
+}
+
+void loop() {
+
+  // Trigger pulse
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(5);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(20);
+  digitalWrite(trigPin, LOW);
+
+  duration = pulseIn(echoPin, HIGH, 30000);
+
+  // No signal detection
+  if (duration == 0) {
+    showOLED("NO SIGNAL", "Check wire!");
+    Serial.println("❌ NO SIGNAL");
+    delay(300);
+    return;
+  }
+
+  distance = (duration * 0.0343) / 2;
+
+  // detect stuck / fake reading
+  bool fake = false;
+
+  if (distance > 600 || distance < 1) fake = true;
+  if (abs(distance - lastDistance) < 0.1) fake = true; // stuck value check
+
+  lastDistance = distance;
+
+  Serial.print("Distance: ");
+  Serial.println(distance);
+
+  if (fake) {
+    showOLED("UNSTABLE", "Fake reading!");
+    Serial.println("⚠️ FAKE / UNSTABLE");
+  }
+  else if (distance < 10) {
+    showOLED("OBJECT CLOSE", String(distance) + " cm");
+    Serial.println("🟡 CLOSE OBJECT");
+  }
+  else if (distance < 100) {
+    showOLED("OBJECT DETECTED", String(distance) + " cm");
+    Serial.println("🟢 DETECTED");
+  }
+  else {
+    showOLED("FAR OBJECT", String(distance) + " cm");
+    Serial.println("🔵 FAR");
+  }
+
+  delay(300);
+}
+
+void showOLED(String line1, String line2) {
+  display.clearDisplay();
+
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+
+  display.setCursor(0, 10);
+  display.println(line1);
+
+  display.setCursor(0, 30);
+  display.println(line2);
+
+  display.display();
+}
