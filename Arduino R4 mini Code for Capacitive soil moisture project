@@ -1,0 +1,96 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Soil Moisture Sensor Pin
+const int soilPin = A0;
+
+// Calibration Values (CHANGE THESE AFTER CALIBRATION)
+const int DRY_SOIL_VALUE = 300;
+const int WET_SOIL_VALUE = 80;
+
+void setup() {
+  Serial.begin(115200);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED initialization failed!");
+    while (1);
+  }
+
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+
+  // Startup Screen
+  display.setTextSize(2);
+  display.setCursor(18, 22);
+  display.print("SOIL");
+  display.display();
+  delay(1500);
+}
+
+void loop() {
+
+  // Average 10 readings
+  long total = 0;
+  for (int i = 0; i < 10; i++) {
+    total += analogRead(soilPin);
+    delay(5);
+  }
+
+  int sensorValue = total / 10;
+
+  // Reverse Moisture Mapping
+  int moisture = map(sensorValue,
+                     DRY_SOIL_VALUE,
+                     WET_SOIL_VALUE,
+                     0,
+                     100);
+
+  moisture = constrain(moisture, 0, 100);
+
+  // Serial Monitor
+  Serial.print("Raw: ");
+  Serial.print(sensorValue);
+  Serial.print("   Moisture: ");
+  Serial.print(moisture);
+  Serial.println("%");
+
+  // OLED Display
+  display.clearDisplay();
+
+  display.setTextSize(1);
+  display.setCursor(18, 0);
+  display.print("Soil Moisture");
+
+  display.setTextSize(2);
+  display.setCursor(32, 14);
+  display.print(moisture);
+  display.print("%");
+
+  // Progress Bar
+  display.drawRect(4, 40, 120, 10, SSD1306_WHITE);
+  int barWidth = map(moisture, 0, 100, 0, 118);
+  display.fillRect(5, 41, barWidth, 8, SSD1306_WHITE);
+
+  // Status
+  display.setTextSize(1);
+  display.setCursor(0, 54);
+
+  if (moisture < 30) {
+    display.print("Status: DRY");
+  } else if (moisture < 70) {
+    display.print("Status: MOIST");
+  } else {
+    display.print("Status: WET");
+  }
+
+  display.display();
+
+  delay(100);
+}
