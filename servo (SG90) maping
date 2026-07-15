@@ -1,0 +1,43 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Servo.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+Servo myServo;
+
+int countValue = 0;
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+
+  myServo.attach(9); // Servo signal pin
+
+  lcd.setCursor(0, 0);
+  lcd.print("LCD + SERVO TEST");
+}
+
+void loop() {
+  // Show counter
+  lcd.setCursor(0, 1);
+  lcd.print("Count: ");
+  lcd.print(countValue);
+  lcd.print("   ");
+
+  // Move servo
+  myServo.write(0);
+  delay(500);
+
+  myServo.write(90);
+  delay(500);
+
+  myServo.write(180);
+  delay(500);
+
+  // increase counter
+  countValue++;
+
+  if (countValue > 99) {
+    countValue = 0;
+  }
+}
