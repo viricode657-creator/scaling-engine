@@ -1,0 +1,61 @@
+#include <WiFi.h>
+#include <WebServer.h>
+
+const char* ssid = "ESP32_AP";
+const char* password = "12345678";
+
+WebServer server(80);
+
+const int LED = 2;   // Built-in LED on most ESP32 DevKit V1
+
+void handleRoot() {
+  String html =
+  "<!DOCTYPE html><html>"
+  "<head>"
+  "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+  "<title>ESP32 LED Control</title>"
+  "</head>"
+  "<body style='text-align:center;font-family:Arial;'>"
+  "<h1>ESP32 LED Controller</h1>"
+  "<p><a href='/on'><button style='width:150px;height:60px;font-size:22px;'>LED ON</button></a></p>"
+  "<p><a href='/off'><button style='width:150px;height:60px;font-size:22px;'>LED OFF</button></a></p>"
+  "</body></html>";
+
+  server.send(200, "text/html", html);
+}
+
+void handleOn() {
+  digitalWrite(LED, HIGH);
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void handleOff() {
+  digitalWrite(LED, LOW);
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(LED, OUTPUT);
+  digitalWrite(LED, LOW);
+
+  WiFi.softAP(ssid, password);
+
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.softAPIP());
+
+  server.on("/", handleRoot);
+  server.on("/on", handleOn);
+  server.on("/off", handleOff);
+
+  server.begin();
+
+  Serial.println("Server Ready");
+}
+
+void loop() {
+  server.handleClient();
+}
